@@ -9,31 +9,39 @@ app.get("/check/:username", async (req, res) => {
   const username = req.params.username;
 
   try {
-    const response = await fetch(`https://www.reddit.com/user/${username}/about.json`, {
+    const url = `https://www.reddit.com/user/${username}/about.json`;
+    console.log("🔍 Fetching:", url);
+
+    const response = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) RedditCheckerBot/1.0"
       }
     });
 
-    if (response.status === 404) {
-      return res.json({ exists: false });
-    }
+    console.log("📡 Status Code:", response.status);
 
     if (!response.ok) {
-      return res.json({ exists: false });
+      return res.json({ exists: false, debug: `Error ${response.status}` });
     }
 
-    const data = await response.json();
+    const text = await response.text();
+    console.log("📄 Raw Response:", text);
 
-    if (data && data.data && data.data.name) {
-      res.json({ exists: true, name: data.data.name });
-    } else {
-      res.json({ exists: false });
+    try {
+      const data = JSON.parse(text);
+      if (data?.data?.name) {
+        return res.json({ exists: true, name: data.data.name });
+      } else {
+        return res.json({ exists: false, debug: "No data.name" });
+      }
+    } catch (err) {
+      console.log("❌ JSON Parse Error:", err);
+      return res.json({ exists: false, debug: "Invalid JSON" });
     }
 
   } catch (err) {
-    console.error("❌ Error checking username:", err);
-    res.status(500).json({ error: "Error checking account" });
+    console.error("❌ Fetch Error:", err);
+    res.json({ exists: false, debug: "Server error" });
   }
 });
 
