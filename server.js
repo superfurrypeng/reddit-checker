@@ -3,40 +3,24 @@ import fetch from "node-fetch";
 import cors from "cors";
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.use(cors()); // ✅ Allows frontend (Netlify) to access backend
 
-// ✅ Test secret key (always passes verification)
-const SECRET_KEY = "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe";
+const limits = {};
+const MAX_CHECKS = 50;
+const TIME_WINDOW = 24 * 60 * 60 * 1000; // 24 hours
 
-const userLimits = {};
-
-app.post("/check/:username", async (req, res) => {
-  const { token } = req.body;
+app.get("/check/:username", async (req, res) => {
   const ip = req.ip;
+  const now = Date.now();
 
-  // Verify CAPTCHA (will always pass with test key)
-  const captchaVerify = await fetch(
-    `https://www.google.com/recaptcha/api/siteverify?secret=${SECRET_KEY}&response=${token}`,
-    { method: "POST" }
-  ).then(r => r.json());
+  if (!limits[ip]) limits[ip] = [];
+  limits[ip] = limits[ip].filter((time) => now - time < TIME_WINDOW);
 
-  if (!captchaVerify.success) {
-    return res.status(400).json({ error: "CAPTCHA failed" });
+  if (limits[ip].length >= MAX_CHECKS) {
+    return res.status(429).json({ error: "limit_reached" });
   }
 
-  // Limit: 50 checks per IP per 24 hours
-  if (!userLimits[ip]) userLimits[ip] = { count: 0, reset: Date.now() + 86400000 };
-
-  if (Date.now() > userLimits[ip].reset) {
-    userLimits[ip] = { count: 0, reset: Date.now() + 86400000 };
-  }
-
-  if (userLimits[ip].count >= 50) {
-    return res.status(429).json({ error: "Daily limit reached (50 checks)" });
-  }
-
-  userLimits[ip].count++;
+  limits[ip].push(now);
 
   try {
     const response = await fetch(
@@ -50,9 +34,11 @@ app.post("/check/:username", async (req, res) => {
 
     const data = await response.json();
     res.json({ exists: true, name: data.data.name });
-  } catch {
+  } catch (err) {
+    console.error("Error fetching Reddit API:", err);
     res.status(500).json({ error: "Error checking account" });
   }
 });
 
-app.listen(3000, () => console.log("✅ Server running on http://localhost:3000"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
