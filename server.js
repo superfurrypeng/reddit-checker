@@ -1,48 +1,43 @@
 import express from "express";
 import fetch from "node-fetch";
-import cors from "cors";
+import HttpsProxyAgent from "https-proxy-agent";
 
 const app = express();
-app.use(cors());
+const PORT = process.env.PORT || 3000;
+
+const proxyUrl = "http://jgjhfbkw:kc0my7jixh3s@38.154.188.191:7964";
+const agent = new HttpsProxyAgent(proxyUrl);
 
 app.get("/check/:username", async (req, res) => {
-  const username = req.params.username;
+  const { username } = req.params;
+  const url = `https://www.reddit.com/user/${username}/about.json`;
 
   try {
-    const url = `https://www.reddit.com/user/${username}/about.json`;
-    console.log("🔍 Fetching:", url);
-
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) RedditCheckerBot/1.0"
-      }
-    });
-
-    console.log("📡 Status Code:", response.status);
+    console.log(`Fetching Reddit API for ${username} through proxy...`);
+    const response = await fetch(url, { agent });
 
     if (!response.ok) {
-      return res.json({ exists: false, debug: `Error ${response.status}` });
+      console.error(`❌ Reddit API Error: ${response.status}`);
+      return res.json({ exists: false, debug: `HTTP ${response.status}` });
     }
 
     const text = await response.text();
-    console.log("📄 Raw Response:", text);
-
     try {
       const data = JSON.parse(text);
-      if (data?.data?.name) {
+
+      if (data.data && data.data.name) {
         return res.json({ exists: true, name: data.data.name });
       } else {
-        return res.json({ exists: false, debug: "No data.name" });
+        return res.json({ exists: false, debug: "User not found" });
       }
     } catch (err) {
-      console.log("❌ JSON Parse Error:", err);
-      return res.json({ exists: false, debug: "Invalid JSON" });
+      console.error("❌ JSON Parse Error:", err);
+      return res.json({ exists: false, debug: "Invalid JSON from Reddit" });
     }
-
   } catch (err) {
     console.error("❌ Fetch Error:", err);
-    res.json({ exists: false, debug: "Server error" });
+    return res.json({ exists: false, debug: "Server error" });
   }
 });
 
-app.listen(3000, () => console.log("✅ Server running on port 3000"));
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
